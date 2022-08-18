@@ -21,4 +21,10 @@ config MACH_XIAOMI_VAYU
 	help
 		Support for POCO X3 Pro
 
+config MACH_XIAOMI_NABU
+	bool "Xiaomi nabu board"
+	select MACH_XIAOMI_SM8150
+	help
+		Support for Xiaomi Pad 5
+
 endmenu

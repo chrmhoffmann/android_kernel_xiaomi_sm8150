@@ -1,7 +1,6 @@
 /*
 ** =============================================================================
 ** Copyright (c) 2017  Texas Instruments Inc.
-** Copyright (C) 2021 XiaoMi, Inc.
 **
 ** This program is free software; you can redistribute it and/or modify it under
 ** the terms of the GNU General Public License as published by the Free Software
@@ -32,7 +31,6 @@
 #include <linux/uaccess.h>
 #include <linux/miscdevice.h>
 #include <dsp/tas_smart_amp_v2.h>
-#include "tas25xx-debug.h"
 
 /* Holds the Packet data required for processing */
 struct tas_dsp_pkt {

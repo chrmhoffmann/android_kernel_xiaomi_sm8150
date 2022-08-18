@@ -1,7 +1,6 @@
 /*
  * =============================================================================
  * Copyright (c) 2016  Texas Instruments Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License as published by the Free Software
@@ -22,6 +21,7 @@
  */
 
 #ifdef CONFIG_TAS256X_CODEC
+#define DEBUG 5
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -53,7 +53,6 @@
 #endif /*CONFIG_PLATFORM_EXYNOS*/
 #include "tas25xx-calib.h"
 #endif /*CONFIG_TAS25XX_ALGO*/
-#include "tas25xx-debug.h"
 
 #define TAS256X_MDELAY 0xFFFFFFFE
 #define TAS256X_MSLEEP 0xFFFFFFFD

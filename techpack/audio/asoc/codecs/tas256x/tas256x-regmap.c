@@ -2,7 +2,6 @@
  * ALSA SoC Texas Instruments TAS256X High Performance 4W Smart Amplifier
  *
  * Copyright (C) 2016 Texas Instruments, Inc.
- * Copyright (C) 2021 XiaoMi, Inc.
  *
  * Author: saiprasad
  *
@@ -16,6 +15,8 @@
  *
  */
 #ifdef CONFIG_TAS256X_REGMAP
+
+#define DEBUG 5
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/err.h>
@@ -42,7 +43,6 @@
 #include "tas2564.h"
 #include "tas256x-device.h"
 #include "tas256x-codec.h"
-#include "tas25xx-debug.h"
 
 #ifdef CONFIG_TAS25XX_ALGO
 #ifdef CONFIG_PLATFORM_EXYNOS

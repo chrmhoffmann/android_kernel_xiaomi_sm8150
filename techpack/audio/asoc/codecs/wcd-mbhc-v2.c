@@ -9,6 +9,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#define DEBUG
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -33,13 +34,138 @@
 #include "wcd-mbhc-legacy.h"
 #include "wcd-mbhc-adc.h"
 #include "wcd-mbhc-v2-api.h"
+#include <linux/debugfs.h>
+#define CONFIG_AUDIO_UART_DEBUG
+#define HEADSET_STATUS_RECORD_INDEX_PLUGIN_HEADSET (3)
+#define HEADSET_STATUS_RECORD_INDEX_PLUGIN_HEADPHONE (1)
+#define HEADSET_STATUS_RECORD_INDEX_PLUGOUT (0)
+
+#define HEADSET_EVENT_PLUGIN_HEADPHONE (0)
+#define HEADSET_EVENT_PLUGIN_MICROPHONE (4)
+#define HEADSET_EVENT_PLUGIN_JACK (8)
+
+#define HEADSET_EVENT_KEY_PREVIOUS_DOWN (0)
+#define HEADSET_EVENT_KEY_PREVIOUS_UP (4)
+
+#define HEADSET_EVENT_KEY_NEXT_DOWN (0)
+#define HEADSET_EVENT_KEY_NEXT_UP (4)
+
+#define HEADSET_EVENT_KEY_MEDIA_DOWN (0)
+#define HEADSET_EVENT_KEY_MEDIA_UP (4)
+
+#define HEADSET_EVENT_PLUGOUT_HEADPHONE (0)
+#define HEADSET_EVENT_PLUGOUT_MICROPHONE (4)
+#define HEADSET_EVENT_PLUGOUT_JACK (8)
+
+#define DEBUGFS_DIR_NAME "mbhc"
+#define DEBUGFS_HEADSET_STATUS_FILE_NAME "headset_status"
+#define HEADSET_EVENT_MAX (5)
+
+static struct dentry* mbhc_debugfs_dir;
+
+static ssize_t headset_status_read(struct file *filp, char __user *buffer,
+		size_t count, loff_t *ppos);
+static ssize_t headset_status_write(struct file *filp, const char __user *buffer,
+		size_t count, loff_t *ppos);
+static void add_headset_event(int status, int mask, int jackstatus);
+static u16 headset_status[HEADSET_EVENT_MAX] = {0,0,0,0,0};
+
+// When the number of events is more than 15, no more growth.
+static int maxF(int a, int b) {
+	int x = 0;
+	x = a & (0xF << b);
+	x += 0x1 << b;
+	if (x > (0xF << b)) {
+		x = 0xF << b;
+		return (x + (a & ~(0xF << b)));
+	} else {
+		return a + (0x1 << b);
+	}
+}
 
 void wcd_mbhc_jack_report(struct wcd_mbhc *mbhc,
 			  struct snd_soc_jack *jack, int status, int mask)
 {
 	snd_soc_jack_report(jack, status, mask);
+	add_headset_event(mbhc->hph_status, mask, jack->status);
 }
 EXPORT_SYMBOL(wcd_mbhc_jack_report);
+
+static void add_headset_event(int status, int mask, int jackstatus) {
+	if (status == HEADSET_STATUS_RECORD_INDEX_PLUGOUT) {
+		headset_status[4] = maxF(headset_status[4], HEADSET_EVENT_PLUGOUT_HEADPHONE);
+		headset_status[4] = maxF(headset_status[4], HEADSET_EVENT_PLUGOUT_MICROPHONE);
+		headset_status[4] = maxF(headset_status[4], HEADSET_EVENT_PLUGOUT_JACK);
+		return;
+	} else if (status == HEADSET_STATUS_RECORD_INDEX_PLUGIN_HEADPHONE) {
+		headset_status[0] = maxF(headset_status[0], HEADSET_EVENT_PLUGIN_HEADPHONE);
+		headset_status[0] = maxF(headset_status[0], HEADSET_EVENT_PLUGIN_JACK);
+		return;
+	} else if (status == HEADSET_STATUS_RECORD_INDEX_PLUGIN_HEADSET) {
+		switch(mask) {
+			case SND_JACK_BTN_0:
+				if(!jackstatus) {
+				headset_status[3] = maxF(headset_status[3], HEADSET_EVENT_KEY_MEDIA_DOWN);
+				} else {
+				headset_status[3] = maxF(headset_status[3], HEADSET_EVENT_KEY_MEDIA_UP);
+				}
+				break;
+			case SND_JACK_BTN_1:
+				if(!jackstatus) {
+				headset_status[1] = maxF(headset_status[1], HEADSET_EVENT_KEY_PREVIOUS_DOWN);
+				} else {
+				headset_status[1] = maxF(headset_status[1], HEADSET_EVENT_KEY_PREVIOUS_UP);
+				}
+				break;
+			case SND_JACK_BTN_2:
+				if(!jackstatus) {
+				headset_status[2] = maxF(headset_status[2], HEADSET_EVENT_KEY_NEXT_DOWN);
+				} else {
+				headset_status[2] = maxF(headset_status[2], HEADSET_EVENT_KEY_NEXT_UP);
+				}
+				break;
+			default:
+				headset_status[0] = maxF(headset_status[0], HEADSET_EVENT_PLUGIN_HEADPHONE);
+				headset_status[0] = maxF(headset_status[0], HEADSET_EVENT_PLUGIN_MICROPHONE);
+				headset_status[0] = maxF(headset_status[0], HEADSET_EVENT_PLUGIN_JACK);
+				break;
+		}
+		return;
+	}
+}
+
+static ssize_t headset_status_read(struct file *filp, char __user *buffer,
+		size_t count, loff_t *ppos) {
+	char buf[64];
+
+	sprintf(buf, "0x%04x 0x%04x 0x%04x 0x%04x 0x%04x\n",
+			headset_status[0], headset_status[1],
+			headset_status[2], headset_status[3],
+			headset_status[4]);
+
+	return simple_read_from_buffer(buffer, count, ppos, buf, strlen(buf));
+}
+
+static ssize_t headset_status_write(struct file *filp, const char __user *buffer,
+		size_t count, loff_t *ppos) {
+	char buf[4];
+	size_t buf_size = min(count, sizeof(buf) - 1);
+
+	if (copy_from_user(buf, buffer, buf_size))
+		return -EFAULT;
+
+	if (strncmp(buf, "0", 1) == 0) {
+		memset(headset_status, 0, sizeof(headset_status));
+	}
+
+	return count;
+}
+
+static const struct file_operations mbhc_headset_status_fops = {
+	.owner = THIS_MODULE,
+	.read = headset_status_read,
+	.write = headset_status_write,
+};
 
 static void __hphocp_off_report(struct wcd_mbhc *mbhc, u32 jack_status,
 				int irq)
@@ -214,9 +340,6 @@ static int wcd_event_notify(struct notifier_block *self, unsigned long val,
 	struct snd_soc_codec *codec = mbhc->codec;
 	bool micbias2 = false;
 	bool micbias1 = false;
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-	u8 fsm_en = 0;
-#endif
 
 	pr_debug("%s: event %s (%d)\n", __func__,
 		 wcd_mbhc_get_event_string(event), event);
@@ -257,14 +380,7 @@ static int wcd_event_notify(struct notifier_block *self, unsigned long val,
 					false);
 out_micb_en:
 		/* Disable current source if micbias enabled */
-		if (mbhc->mbhc_cb->mbhc_micbias_control) {
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-			WCD_MBHC_REG_READ(WCD_MBHC_FSM_EN, fsm_en);
-			if (fsm_en)
-				WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL,
-							 0);
-#endif
-		} else {
+		if (!mbhc->mbhc_cb->mbhc_micbias_control) {
 			mbhc->is_hs_recording = true;
 			wcd_enable_curr_micbias(mbhc, WCD_MBHC_EN_MB);
 		}
@@ -273,20 +389,6 @@ out_micb_en:
 			mbhc->mbhc_cb->set_cap_mode(codec, micbias1, true);
 		break;
 	case WCD_EVENT_PRE_MICBIAS_2_OFF:
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-		/*
-		 * Before MICBIAS_2 is turned off, if FSM is enabled,
-		 * make sure current source is enabled so as to detect
-		 * button press/release events
-		 */
-		if (mbhc->mbhc_cb->mbhc_micbias_control &&
-		    !mbhc->micbias_enable) {
-			WCD_MBHC_REG_READ(WCD_MBHC_FSM_EN, fsm_en);
-			if (fsm_en)
-				WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL,
-							 3);
-		}
-#endif
 		break;
 	/* MICBIAS usage change */
 	case WCD_EVENT_POST_DAPM_MICBIAS_2_OFF:
@@ -606,10 +708,12 @@ void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 		mbhc->zl = mbhc->zr = 0;
 		pr_debug("%s: Reporting removal %d(%x)\n", __func__,
 			 jack_type, mbhc->hph_status);
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-		if (mbhc->mbhc_cb->mbhc_mute_hs_tx && jack_type == SND_JACK_HEADSET)
+
+		if (mbhc->mbhc_cb->mbhc_mute_hs_tx &&
+		  jack_type == SND_JACK_HEADSET) {
 			mbhc->mbhc_cb->mbhc_mute_hs_tx(codec);
-#endif
+		}
+
 		wcd_mbhc_jack_report(mbhc, &mbhc->headset_jack,
 				mbhc->hph_status, WCD_MBHC_JACK_MASK);
 		wcd_mbhc_set_and_turnoff_hph_padac(mbhc);
@@ -705,7 +809,7 @@ void wcd_mbhc_report_plug(struct wcd_mbhc *mbhc, int insertion,
 					&mbhc->zl, &mbhc->zr);
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN,
 						 fsm_en);
-#ifndef CONFIG_MACH_XIAOMI_VAYU
+#if 0
 			if ((mbhc->zl > mbhc->mbhc_cfg->linein_th &&
 				mbhc->zl < MAX_IMPED) &&
 				(mbhc->zr > mbhc->mbhc_cfg->linein_th &&
@@ -826,10 +930,8 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 		 * Nothing was reported previously
 		 * report a headphone or unsupported
 		 */
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADSET)
 			wcd_mbhc_report_plug(mbhc, 0, SND_JACK_HEADSET);
-#endif
 
 		wcd_mbhc_report_plug(mbhc, 1, SND_JACK_HEADPHONE);
 	} else if (plug_type == MBHC_PLUG_TYPE_GND_MIC_SWAP) {
@@ -847,10 +949,8 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 		if (anc_mic_found)
 			jack_type = SND_JACK_ANC_HEADPHONE;
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		if (mbhc->current_plug == MBHC_PLUG_TYPE_HEADPHONE)
 			wcd_mbhc_report_plug(mbhc, 0, SND_JACK_HEADPHONE);
-#endif
 
 		/*
 		 * If Headphone was reported previously, this will
@@ -867,10 +967,8 @@ void wcd_mbhc_find_plug_and_report(struct wcd_mbhc *mbhc,
 			/* Disable HW FSM and current source */
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 0);
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 0);
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 			mbhc->mbhc_cb->mbhc_micbias_control(mbhc->codec,
 							MIC_BIAS_2, MICB_PULLUP_DISABLE);
-#endif
 			/* Setup for insertion detection */
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_ELECT_DETECTION_TYPE,
 						 1);
@@ -930,10 +1028,8 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 	bool micbias1 = false;
 	struct snd_soc_codec *codec = mbhc->codec;
 	enum snd_jack_types jack_type;
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	struct usbc_ana_audio_config *config =
 		&mbhc->mbhc_cfg->usbc_analog_cfg;
-#endif
 
 	dev_dbg(codec->dev, "%s: enter\n", __func__);
 	WCD_MBHC_RSC_LOCK(mbhc);
@@ -1005,10 +1101,8 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 		/* Disable HW FSM */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_FSM_EN, 0);
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_ISRC_CTL, 0);
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		mbhc->mbhc_cb->mbhc_micbias_control(mbhc->codec,
 						MIC_BIAS_2, MICB_PULLUP_DISABLE);
-#endif
 		if (mbhc->mbhc_cb->mbhc_common_micb_ctrl)
 			mbhc->mbhc_cb->mbhc_common_micb_ctrl(codec,
 					MBHC_COMMON_MICB_TAIL_CURR, false);
@@ -1018,6 +1112,7 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 
 		mbhc->btn_press_intr = false;
 		mbhc->is_btn_press = false;
+		mbhc->mbhc_cfg->flip_switch = false;
 		switch (mbhc->current_plug) {
 		case MBHC_PLUG_TYPE_HEADPHONE:
 			jack_type = SND_JACK_HEADPHONE;
@@ -1053,20 +1148,13 @@ static void wcd_mbhc_swch_irq_handler(struct wcd_mbhc *mbhc)
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_ELECT_DETECTION_TYPE, 1);
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_ELECT_SCHMT_ISRC, 0);
 		mbhc->extn_cable_hph_rem = false;
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		if (config->usbc_en1_gpio_p) {
 			msm_cdc_pinctrl_select_sleep_state(config->usbc_en1_gpio_p);
 			pr_info("wcd_mbhc_swch_irq_handler: switch L/R to usb \n");
 		}
-#endif
 		wcd_mbhc_report_plug(mbhc, 0, jack_type);
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		if (mbhc->mbhc_cfg->enable_usbc_analog) {
-#else
-		if (mbhc->mbhc_cfg->enable_usbc_analog &&
-			mbhc->mbhc_cfg->fsa_enable) {
-#endif
 			WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 0);
 			if (mbhc->mbhc_cb->clk_setup)
 				mbhc->mbhc_cb->clk_setup(mbhc->codec, false);
@@ -1130,21 +1218,27 @@ int wcd_mbhc_get_button_mask(struct wcd_mbhc *mbhc)
 	switch (btn) {
 	case 0:
 		mask = SND_JACK_BTN_0;
+        pr_debug("%s() button is 0x%x[hook]", __func__, mask);
 		break;
 	case 1:
 		mask = SND_JACK_BTN_1;
+        pr_debug("%s() button is 0x%x[volume up]", __func__, mask);
 		break;
 	case 2:
 		mask = SND_JACK_BTN_2;
+        pr_debug("%s() button is 0x%x[volume down]", __func__, mask);
 		break;
 	case 3:
 		mask = SND_JACK_BTN_3;
+        pr_debug("%s() button is 0x%x", __func__, mask);
 		break;
 	case 4:
 		mask = SND_JACK_BTN_4;
+        pr_debug("%s() button is 0x%x", __func__, mask);
 		break;
 	case 5:
 		mask = SND_JACK_BTN_5;
+        pr_debug("%s() button is 0x%x", __func__, mask);
 		break;
 	default:
 		break;
@@ -1421,10 +1515,8 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 	 * by an external source
 	 */
 	if (mbhc->mbhc_cfg->enable_usbc_analog) {
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		mbhc->hphl_swh = 0;
 		mbhc->gnd_swh = 0;
-#endif
 
 		if (mbhc->mbhc_cb->hph_pull_up_control_v2)
 			mbhc->mbhc_cb->hph_pull_up_control_v2(codec,
@@ -1448,11 +1540,7 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 	 * when a non-audio accessory is inserted. L_DET_EN sets to 1 when FSA
 	 * I2C driver notifies that ANALOG_AUDIO_ADAPTER is inserted
 	 */
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	if (mbhc->mbhc_cfg->enable_usbc_analog)
-#else
-	if (mbhc->mbhc_cfg->enable_usbc_analog && mbhc->mbhc_cfg->fsa_enable)
-#endif
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 0);
 	else
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 1);
@@ -1461,32 +1549,18 @@ static int wcd_mbhc_initialise(struct wcd_mbhc *mbhc)
 		/* Insertion debounce set to 48ms */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 4);
 	} else {
-		/* Insertion debounce set to 96ms */
-#ifdef CONFIG_MACH_XIAOMI_VAYU
+		/* Insertion debounce set to 256ms */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 9);
-#else
-		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_INSREM_DBNC, 6);
-#endif
 	}
 
 	/* Button Debounce set to 16ms */
 	WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_BTN_DBNC, 2);
 
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-	/* Enable micbias ramp */
-	if (mbhc->mbhc_cb->mbhc_micb_ramp_control)
-		mbhc->mbhc_cb->mbhc_micb_ramp_control(codec, true);
-#endif
 	/* enable bias */
 	mbhc->mbhc_cb->mbhc_bias(codec, true);
 	/* enable MBHC clock */
 	if (mbhc->mbhc_cb->clk_setup) {
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		if (mbhc->mbhc_cfg->enable_usbc_analog)
-#else
-		if (mbhc->mbhc_cfg->enable_usbc_analog &&
-			mbhc->mbhc_cfg->fsa_enable)
-#endif
 			mbhc->mbhc_cb->clk_setup(codec, false);
 		else
 			mbhc->mbhc_cb->clk_setup(codec, true);
@@ -1641,131 +1715,54 @@ static int wcd_mbhc_set_keycode(struct wcd_mbhc *mbhc)
 	return result;
 }
 
-static int wcd_mbhc_usbc_ana_event_handler(struct notifier_block *nb,
-					   unsigned long mode, void *ptr)
+static int wcd_mbhc_usb_c_analog_setup_gpios(struct wcd_mbhc *mbhc,
+					     bool active)
 {
-	struct wcd_mbhc *mbhc = container_of(nb, struct wcd_mbhc, fsa_nb);
+	int rc = 0;
+	struct usbc_ana_audio_config *config =
+		&mbhc->mbhc_cfg->usbc_analog_cfg;
 
-	if (!mbhc)
-		return -EINVAL;
+	dev_dbg(mbhc->codec->dev, "%s: setting GPIOs active = %d\n",
+		__func__, active);
 
-	dev_dbg(mbhc->codec->dev, "%s: mode = %lu\n", __func__, mode);
+	if (active) {
+		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_MIC_CLAMP_CTL, 2);
+		mbhc->mbhc_cfg->enable_dual_adc_gpio(mbhc->mbhc_cfg->dual_adc_gpio_node, 0);
+#ifdef CONFIG_AUDIO_UART_DEBUG
+		msm_cdc_pinctrl_select_active_state(config->uart_audio_switch_gpio_p);
+		dev_dbg(mbhc->codec->dev, "disable uart\n");
+#endif
+		if (config->usbc_en1_gpio_p)
+			rc = msm_cdc_pinctrl_select_active_state(
+				config->usbc_en1_gpio_p);
+		if (rc == 0 && config->usbc_force_gpio_p)
+			rc = msm_cdc_pinctrl_select_active_state(
+				config->usbc_force_gpio_p);
+		mbhc->usbc_mode = POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER;
 
-	if (mode == POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER) {
+		//enable MBHC detect
 		if (mbhc->mbhc_cb->clk_setup)
 			mbhc->mbhc_cb->clk_setup(mbhc->codec, true);
 		/* insertion detected, enable L_DET_EN */
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 1);
-	}
-	return 0;
-}
-
-static int wcd_mbhc_init_gpio(struct wcd_mbhc *mbhc,
-				struct wcd_mbhc_config *mbhc_cfg,
-				const char *gpio_dt_str,
-				int *gpio,
-				struct device_node **gpio_dn)
-{
-	int rc = 0;
-	struct snd_soc_codec *codec = mbhc->codec;
-	struct snd_soc_card *card = codec->component.card;
-
-	dev_dbg(mbhc->codec->dev, "%s: gpio %s\n", __func__, gpio_dt_str);
-
-	*gpio_dn = of_parse_phandle(card->dev->of_node, gpio_dt_str, 0);
-
-	if (!(*gpio_dn)) {
-		*gpio = of_get_named_gpio(card->dev->of_node, gpio_dt_str, 0);
-		if (!gpio_is_valid(*gpio)) {
-			dev_err(card->dev, "%s, property %s not in node %s",
-				__func__, gpio_dt_str,
-				card->dev->of_node->full_name);
-			rc = -EINVAL;
-		}
-	}
-
-	return rc;
-}
-
-static int wcd_mbhc_usb_c_analog_setup_gpios(struct wcd_mbhc *mbhc, bool active)
-{
-	int rc = 0;
-	struct usbc_ana_audio_config *config =
-			&mbhc->mbhc_cfg->usbc_analog_cfg;
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-	union power_supply_propval pval;
-#endif
-
-	dev_dbg(mbhc->codec->dev, "%s: setting GPIOs active = %d\n",
-			__func__, active);
-
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-	memset(&pval, 0, sizeof(pval));
-#endif
-
-	if (active) {
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_MIC_CLAMP_CTL, 2);
-		mbhc->mbhc_cfg->enable_dual_adc_gpio(mbhc->mbhc_cfg->dual_adc_gpio_node, 0);
-#else
-		pval.intval = POWER_SUPPLY_TYPEC_PR_SOURCE;
-		if (power_supply_set_property(mbhc->usb_psy,
-				POWER_SUPPLY_PROP_TYPEC_POWER_ROLE, &pval))
-			dev_info(mbhc->codec->dev, "%s: force PR_SOURCE mode unsuccessful\n",
-					__func__);
-		else
-			mbhc->usbc_force_pr_mode = true;
-#endif
-
-		if (config->usbc_en1_gpio_p)
-			rc = msm_cdc_pinctrl_select_active_state(
-					config->usbc_en1_gpio_p);
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-		if (rc == 0 && config->usbc_en2n_gpio_p)
-			rc = msm_cdc_pinctrl_select_active_state(
-					config->usbc_en2n_gpio_p);
-#endif
-		if (rc == 0 && config->usbc_force_gpio_p)
-			rc = msm_cdc_pinctrl_select_active_state(
-					config->usbc_force_gpio_p);
-		mbhc->usbc_mode = POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER;
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-		if (mbhc->mbhc_cb->clk_setup)
-			mbhc->mbhc_cb->clk_setup(mbhc->codec, true);
-		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 1);
-#endif
 	} else {
 		/* no delay is required when disabling GPIOs */
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-		if (config->usbc_en2n_gpio_p)
-			msm_cdc_pinctrl_select_sleep_state(
-				config->usbc_en2n_gpio_p);
-#endif
 		if (config->usbc_en1_gpio_p)
 			msm_cdc_pinctrl_select_sleep_state(
 				config->usbc_en1_gpio_p);
 		if (config->usbc_force_gpio_p)
 			msm_cdc_pinctrl_select_sleep_state(
 				config->usbc_force_gpio_p);
-
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-		mbhc->mbhc_cfg->enable_dual_adc_gpio(mbhc->mbhc_cfg->dual_adc_gpio_node, 1);
-#else
-		if (mbhc->usbc_force_pr_mode) {
-			pval.intval = POWER_SUPPLY_TYPEC_PR_DUAL;
-			if (power_supply_set_property(mbhc->usb_psy,
-				POWER_SUPPLY_PROP_TYPEC_POWER_ROLE, &pval))
-				dev_info(mbhc->codec->dev, "%s: force PR_DUAL mode unsuccessful\n",
-						__func__);
-			mbhc->usbc_force_pr_mode = false;
-		}
+#ifdef CONFIG_AUDIO_UART_DEBUG
+		msm_cdc_pinctrl_select_sleep_state(config->uart_audio_switch_gpio_p);
+		dev_dbg(mbhc->codec->dev, "enable uart\n");
 #endif
+		mbhc->mbhc_cfg->enable_dual_adc_gpio(mbhc->mbhc_cfg->dual_adc_gpio_node, 1);
+
 		mbhc->usbc_mode = POWER_SUPPLY_TYPEC_NONE;
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_MIC_CLAMP_CTL, 0);
 		if (mbhc->mbhc_cfg->swap_gnd_mic)
 			mbhc->mbhc_cfg->swap_gnd_mic(mbhc->codec, false);
-#endif
 	}
 
 	return rc;
@@ -1805,25 +1802,24 @@ static int wcd_mbhc_usb_c_event_changed(struct notifier_block *nb,
 	dev_dbg(codec->dev, "%s: USB change event received\n",
 			__func__);
 	dev_dbg(codec->dev, "%s: supply mode %d, expected %d\n", __func__,
-			mode.intval, POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER);
+		mode.intval, POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER);
 
 	switch (mode.intval) {
 	case POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER:
 	case POWER_SUPPLY_TYPEC_NONE:
-			dev_dbg(codec->dev, "%s: usbc_mode: %d; mode.intval: %d\n",
-				__func__, mbhc->usbc_mode, mode.intval);
+		dev_dbg(codec->dev, "%s: usbc_mode: %d; mode.intval: %d\n",
+			__func__, mbhc->usbc_mode, mode.intval);
 
-			/* filter notifications received before */
-			if (mbhc->usbc_mode == mode.intval)
-				break;
-			mbhc->usbc_mode = mode.intval;
+		if (mbhc->usbc_mode == mode.intval)
+			break; /* filter notifications received before */
+		mbhc->usbc_mode = mode.intval;
 
-			dev_dbg(codec->dev, "%s: queueing usbc_analog_work\n",
-					__func__);
-			schedule_work(&mbhc->usbc_analog_work);
-			break;
+		dev_dbg(codec->dev, "%s: queueing usbc_analog_work\n",
+			__func__);
+		schedule_work(&mbhc->usbc_analog_work);
+		break;
 	default:
-			break;
+		break;
 	}
 	return ret;
 }
@@ -1854,27 +1850,6 @@ static int wcd_mbhc_usb_c_analog_init(struct wcd_mbhc *mbhc)
 		goto err;
 	}
 
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-	mbhc->psy_nb.notifier_call = wcd_mbhc_usb_c_event_changed;
-	mbhc->psy_nb.priority = 0;
-	ret = power_supply_reg_notifier(&mbhc->psy_nb);
-	if (ret) {
-		dev_err(codec->dev, "%s: power supply registration failed\n",
-			__func__);
-		goto err;
-	}
-
-	/*
-	 * as part of the init sequence check if there is a connected
-	 * USB C analog adapter
-	 */
-	dev_dbg(mbhc->codec->dev, "%s: verify if USB adapter is already inserted\n",
-		__func__);
-	ret = wcd_mbhc_usb_c_event_changed(&mbhc->psy_nb,
-					   PSY_EVENT_PROP_CHANGED,
-					   mbhc->usb_psy);
-
-#endif
 err:
 	return ret;
 }
@@ -1885,10 +1860,36 @@ static int wcd_mbhc_usb_c_analog_deinit(struct wcd_mbhc *mbhc)
 
 	/* deregister from PMI */
 	power_supply_unreg_notifier(&mbhc->psy_nb);
+
 	return 0;
 }
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
+static int wcd_mbhc_init_gpio(struct wcd_mbhc *mbhc,
+			      struct wcd_mbhc_config *mbhc_cfg,
+			      const char *gpio_dt_str,
+			      int *gpio, struct device_node **gpio_dn)
+{
+	int rc = 0;
+	struct snd_soc_codec *codec = mbhc->codec;
+	struct snd_soc_card *card = codec->component.card;
+
+	dev_dbg(mbhc->codec->dev, "%s: gpio %s\n", __func__, gpio_dt_str);
+
+	*gpio_dn = of_parse_phandle(card->dev->of_node, gpio_dt_str, 0);
+
+	if (!(*gpio_dn)) {
+		*gpio = of_get_named_gpio(card->dev->of_node, gpio_dt_str, 0);
+		if (!gpio_is_valid(*gpio)) {
+			dev_err(card->dev, "%s, property %s not in node %s",
+				__func__, gpio_dt_str,
+				card->dev->of_node->full_name);
+			rc = -EINVAL;
+		}
+	}
+
+	return rc;
+}
+
 static int wcd_mbhc_non_usb_c_event_changed(struct notifier_block *nb,
 					unsigned long evt, void *ptr)
 {
@@ -1926,7 +1927,25 @@ static int wcd_mbhc_non_usb_c_event_changed(struct notifier_block *nb,
 
 	return ret;
 }
-#endif
+
+static int wcd_mbhc_usbc_ana_event_handler(struct notifier_block *nb,
+					   unsigned long mode, void *ptr)
+{
+	struct wcd_mbhc *mbhc = container_of(nb, struct wcd_mbhc, fsa_nb);
+
+	if (!mbhc)
+		return -EINVAL;
+
+	dev_dbg(mbhc->codec->dev, "%s: mode = %lu\n", __func__, mode);
+
+	if (mode == POWER_SUPPLY_TYPEC_SINK_AUDIO_ADAPTER) {
+		if (mbhc->mbhc_cb->clk_setup)
+			mbhc->mbhc_cb->clk_setup(mbhc->codec, true);
+		/* insertion detected, enable L_DET_EN */
+		WCD_MBHC_REG_UPDATE_BITS(WCD_MBHC_L_DET_EN, 1);
+	}
+	return 0;
+}
 
 int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 {
@@ -1935,9 +1954,7 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 	struct snd_soc_codec *codec;
 	struct snd_soc_card *card;
 	const char *usb_c_dt = "qcom,msm-mbhc-usbc-audio-supported";
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	const char *fsa4476_dt = "qcom,fsa4476-gpio-support";
-#endif
 
 	if (!mbhc || !mbhc_cfg)
 		return -EINVAL;
@@ -1970,19 +1987,7 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 		dev_dbg(mbhc->codec->dev, "%s: usbc analog enabled\n",
 				__func__);
 		mbhc->swap_thr = GND_MIC_USBC_SWAP_THRESHOLD;
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-		mbhc->fsa_np = of_parse_phandle(card->dev->of_node,
-				"fsa4480-i2c-handle", 0);
-		if (mbhc->fsa_np) {
-			mbhc_cfg->fsa_enable = true;
-		} else {
-			dev_err(card->dev, "%s: fsa4480 i2c node not found\n",
-					__func__);
 
-			mbhc_cfg->fsa_enable = false;
-#endif
-
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		mbhc_cfg->use_fsa4476_gpio = 0;
 		if (of_find_property(card->dev->of_node, fsa4476_dt, NULL)) {
 			rc = of_property_read_u32(card->dev->of_node, fsa4476_dt,
@@ -1995,43 +2000,35 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 		}
 
 		if (mbhc_cfg->use_fsa4476_gpio != 0) {
-#endif
 			rc = wcd_mbhc_init_gpio(mbhc, mbhc_cfg,
-					"qcom,usbc-analog-en1_gpio",
-					&config->usbc_en1_gpio,
-					&config->usbc_en1_gpio_p);
+				"qcom,usbc-analog-en1-gpio",
+				&config->usbc_en1_gpio,
+				&config->usbc_en1_gpio_p);
 			if (rc)
 				goto err;
-
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-			rc = wcd_mbhc_init_gpio(mbhc, mbhc_cfg,
-					"qcom,usbc-analog-en2_n_gpio",
-					&config->usbc_en2n_gpio,
-					&config->usbc_en2n_gpio_p);
-			if (rc)
-				goto err;
-
-			if (of_find_property(card->dev->of_node,
-					     "qcom,usbc-analog-force_detect_gpio",
-					     NULL)) {
-				rc = wcd_mbhc_init_gpio(mbhc, mbhc_cfg,
-						"qcom,usbc-analog-force_detect_gpio",
-						&config->usbc_force_gpio,
-						&config->usbc_force_gpio_p);
-				if (rc)
-					goto err;
-			}
-#endif
 
 			dev_dbg(mbhc->codec->dev, "%s: calling usb_c_analog_init\n",
 				__func__);
-			/* init PMI notifier */
+
+#ifdef CONFIG_AUDIO_UART_DEBUG
+		if (of_find_property(card->dev->of_node,
+					"qcom,uart-audio-sw-gpio",
+					NULL)) {
+			rc = wcd_mbhc_init_gpio(mbhc, mbhc_cfg,
+					"qcom,uart-audio-sw-gpio",
+					&config->uart_audio_switch_gpio,
+					&config->uart_audio_switch_gpio_p);
+			if (rc)
+				goto err;
+		}
+#endif
+
 			rc = wcd_mbhc_usb_c_analog_init(mbhc);
 			if (rc) {
 				rc = EPROBE_DEFER;
 				goto err;
 			}
-#ifdef CONFIG_MACH_XIAOMI_VAYU
+			dev_dbg(card->dev, "%s: Using fsa4476 analog gpio switch\n", __func__);
 		} else {
 			mbhc->fsa_np = of_parse_phandle(card->dev->of_node,
 					"fsa4480-i2c-handle", 0);
@@ -2040,10 +2037,13 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 					__func__);
 				rc = -EINVAL;
 				goto err;
-			} // git
-#endif
+			} else {
+				dev_dbg(card->dev,
+					"%s: Using USB fsa4480 i2c switch\n", __func__);
+			}
 		}
 	}
+
 	/* Set btn key code */
 	if ((!mbhc->is_btn_already_regd) && wcd_mbhc_set_keycode(mbhc))
 		pr_err("Set btn key code error!!!\n");
@@ -2067,16 +2067,11 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 				 __func__, mbhc->mbhc_fw, mbhc->mbhc_cal);
 	}
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	if (mbhc_cfg->enable_usbc_analog) {
 		if (mbhc_cfg->use_fsa4476_gpio == 0) {
-#else
-	if (mbhc_cfg->enable_usbc_analog && mbhc_cfg->fsa_enable) {
-#endif
-		mbhc->fsa_nb.notifier_call = wcd_mbhc_usbc_ana_event_handler;
-		mbhc->fsa_nb.priority = 0;
-		rc = fsa4480_reg_notifier(&mbhc->fsa_nb, mbhc->fsa_np);
-#ifdef CONFIG_MACH_XIAOMI_VAYU
+			mbhc->fsa_nb.notifier_call = wcd_mbhc_usbc_ana_event_handler;
+			mbhc->fsa_nb.priority = 0;
+			rc = fsa4480_reg_notifier(&mbhc->fsa_nb, mbhc->fsa_np);
 		} else {
 			mbhc->psy_nb.notifier_call = wcd_mbhc_usb_c_event_changed;
 			mbhc->psy_nb.priority = 0;
@@ -2096,7 +2091,7 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 			rc = wcd_mbhc_usb_c_event_changed(&mbhc->psy_nb,
 							   PSY_EVENT_PROP_CHANGED,
 							   mbhc->usb_psy);
-		} // git
+		}
 	}  else {
 		mbhc->fsa_nb.notifier_call = wcd_mbhc_non_usb_c_event_changed;
 		mbhc->fsa_nb.priority = 0;
@@ -2105,13 +2100,11 @@ int wcd_mbhc_start(struct wcd_mbhc *mbhc, struct wcd_mbhc_config *mbhc_cfg)
 			dev_err(card->dev, "%s: power supply registration failed\n",
 					__func__);
 			goto err;
-		} // git
-#endif
+		}
 	}
 
 	return rc;
 err:
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	if (config->usbc_en1_gpio > 0) {
 		dev_dbg(card->dev, "%s free usb en1 gpio %d\n",
 			__func__, config->usbc_en1_gpio);
@@ -2122,8 +2115,8 @@ err:
 		of_node_put(config->usbc_en1_gpio_p);
 	if (config->usbc_force_gpio_p)
 		of_node_put(config->usbc_force_gpio_p);
-#endif
 	dev_dbg(mbhc->codec->dev, "%s: leave %d\n", __func__, rc);
+
 	return rc;
 }
 EXPORT_SYMBOL(wcd_mbhc_start);
@@ -2159,44 +2152,22 @@ void wcd_mbhc_stop(struct wcd_mbhc *mbhc)
 	}
 
 	if (mbhc->mbhc_cfg->enable_usbc_analog) {
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		if (mbhc->mbhc_cfg->use_fsa4476_gpio == 0) {
-#else
-		if (mbhc->mbhc_cfg->fsa_enable) {
-#endif
 			fsa4480_unreg_notifier(&mbhc->fsa_nb, mbhc->fsa_np);
-		} else {
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		}
-#endif
-			wcd_mbhc_usb_c_analog_deinit(mbhc);
-			/* free GPIOs */
-			if (config->usbc_en1_gpio > 0)
-				gpio_free(config->usbc_en1_gpio);
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-			if (config->usbc_en2n_gpio > 0)
-				gpio_free(config->usbc_en2n_gpio);
-			if (config->usbc_force_gpio)
-				gpio_free(config->usbc_force_gpio);
-#endif
-			if (config->usbc_en1_gpio_p)
-				of_node_put(config->usbc_en1_gpio_p);
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-			if (config->usbc_en2n_gpio_p)
-				of_node_put(config->usbc_en2n_gpio_p);
-			if (config->usbc_force_gpio_p)
-				of_node_put(config->usbc_force_gpio_p);
-#endif
-#ifndef CONFIG_MACH_XIAOMI_VAYU
-		}
-#endif
-#ifdef CONFIG_MACH_XIAOMI_VAYU
+
+		wcd_mbhc_usb_c_analog_deinit(mbhc);
+
+		/* free GPIOs */
+		if (config->usbc_en1_gpio > 0)
+			gpio_free(config->usbc_en1_gpio);
+
+		if (config->usbc_en1_gpio_p)
+			of_node_put(config->usbc_en1_gpio_p);
 	} else {
 		if (mbhc->fsa_nb.notifier_call != NULL)
 			power_supply_unreg_notifier(&mbhc->fsa_nb);
-#endif
 	}
-
 
 	pr_debug("%s: leave\n", __func__);
 }
@@ -2224,6 +2195,12 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_codec *codec,
 	const char *hph_thre = "qcom,msm-mbhc-hs-mic-min-threshold-mv";
 
 	pr_debug("%s: enter\n", __func__);
+
+	mbhc_debugfs_dir = debugfs_create_dir(DEBUGFS_DIR_NAME, NULL);
+	if (!IS_ERR(mbhc_debugfs_dir)) {
+		debugfs_create_file(DEBUGFS_HEADSET_STATUS_FILE_NAME, 0666,
+				mbhc_debugfs_dir, NULL, &mbhc_headset_status_fops);
+	}
 
 	ret = of_property_read_u32(card->dev->of_node, hph_switch, &hph_swh);
 	if (ret) {
@@ -2331,8 +2308,6 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_codec *codec,
 				__func__);
 			return ret;
 		}
-
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		ret = snd_soc_card_jack_new(codec->component.card,
 					    "USB_3_5 Jack", WCD_MBHC_JACK_USB_3_5_MASK,
 					    &mbhc->usb_3_5_jack, NULL, 0);
@@ -2340,7 +2315,6 @@ int wcd_mbhc_init(struct wcd_mbhc *mbhc, struct snd_soc_codec *codec,
 			pr_err("%s: Failed to create new jack USB_3_5 Jack\n", __func__);
 			return ret;
 		}
-#endif
 
 		INIT_DELAYED_WORK(&mbhc->mbhc_firmware_dwork,
 				  wcd_mbhc_fw_read);

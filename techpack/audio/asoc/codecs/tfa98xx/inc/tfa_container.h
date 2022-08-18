@@ -1,10 +1,24 @@
 /*
- * Copyright (C) 2014 NXP Semiconductors, All Rights Reserved.
+ * Copyright 2013-2017 NXP Semiconductors
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
  *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * tfaContainer.h
+ *
+ *  Created on: Sep 11, 2013
+ *      Author: wim
  */
 
 #ifndef TFACONTAINER_H_
@@ -241,7 +255,7 @@ nxpTfaProfileList_t *tfaContGet1stProfList(nxpTfaContainer_t *cont);
  * @param prof is the pointer to the profile list
  * @return profile list pointer
  */
-nxpTfaProfileList_t *tfaContNextProfile(nxpTfaProfileList_t *prof);
+nxpTfaProfileList_t* tfaContNextProfile(nxpTfaProfileList_t *prof);
 
 /**
  * Return the pointer to the first livedata in a list from the tfaContainer
@@ -255,7 +269,7 @@ nxpTfaLiveDataList_t *tfaContGet1stLiveDataList(nxpTfaContainer_t *cont);
  * @param livedata_idx is the pointer to the livedata list
  * @return livedata list pointer
  */
-nxpTfaLiveDataList_t *tfaContNextLiveData(nxpTfaLiveDataList_t *livedata_idx);
+nxpTfaLiveDataList_t* tfaContNextLiveData(nxpTfaLiveDataList_t *livedata_idx);
 
 /**
  * Write a bit field

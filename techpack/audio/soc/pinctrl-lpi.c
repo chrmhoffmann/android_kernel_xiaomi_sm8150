@@ -483,11 +483,8 @@ static void lpi_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)
 	unsigned int i;
 
 	for (i = 0; i < chip->ngpio; i++, gpio++) {
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		/* skip lpi gpio 0~7 and 12 ~ 17 */
-		if (i < 8 || (i > 11 && i < 18))
-			continue;
-#endif
+		if(i < 8 || (i > 11 && i < 18))continue;
 		lpi_gpio_dbg_show_one(s, NULL, chip, i, gpio);
 		seq_puts(s, "\n");
 	}
@@ -783,17 +780,7 @@ static struct platform_driver lpi_pinctrl_driver = {
 	.remove = lpi_pinctrl_remove,
 };
 
-static int __init lpi_init(void)
-{
-	return platform_driver_register(&lpi_pinctrl_driver);
-}
-late_initcall(lpi_init);
-
-static void __exit lpi_exit(void)
-{
-	platform_driver_unregister(&lpi_pinctrl_driver);
-}
-module_exit(lpi_exit);
+module_platform_driver(lpi_pinctrl_driver);
 
 MODULE_DESCRIPTION("QTI LPI GPIO pin control driver");
 MODULE_LICENSE("GPL v2");

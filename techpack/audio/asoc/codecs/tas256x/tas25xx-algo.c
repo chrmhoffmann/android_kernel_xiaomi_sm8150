@@ -4,7 +4,6 @@
 #include <linux/syscalls.h>
 #include <linux/fs.h>
 #include "tas25xx-calib.h"
-#include "tas25xx-debug.h"
 
 #define USE_VFS			1
 #define CODEC_CONTROL		1

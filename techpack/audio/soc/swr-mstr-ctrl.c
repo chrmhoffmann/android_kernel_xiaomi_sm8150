@@ -9,7 +9,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
-
+#define DEBUG
 #include <linux/irq.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -1918,7 +1918,6 @@ static int swrm_probe(struct platform_device *pdev)
 		goto err_pdata_fail;
 	}
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	/* Make inband tx interrupts as wakeup capable for slave irq */
 	swrm->swr_tx_wakeup_capable = false;
 	if (of_property_read_bool(swrm->dev->of_node,
@@ -1928,7 +1927,6 @@ static int swrm_probe(struct platform_device *pdev)
 	} else
 		dev_dbg(swrm->dev, "%s: swrm tx wakeup capable not defined",
 			__func__);
-#endif
 
 	for (i = 0; i < map_length; i++) {
 		port_num = temp[3 * i];
@@ -2070,13 +2068,9 @@ static int swrm_probe(struct platform_device *pdev)
 				   (void *) "swrm_reg_dump",
 				   &swrm_debug_ops);
 	}
-
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	/* Make inband tx interrupts as wakeup capable for slave irq */
 	if (swrm->master_id == MASTER_ID_TX)
 		irq_set_irq_wake(swrm->irq, 1);
-#endif
-
 	ret = device_init_wakeup(swrm->dev, true);
 	if (ret) {
 		dev_err(swrm->dev, "Device wakeup init failed: %d\n", ret);

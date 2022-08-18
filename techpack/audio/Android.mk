@@ -13,6 +13,7 @@ $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/soc/Module
 $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/Module.symvers)
 $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/Module.symvers)
 $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/wcd934x/Module.symvers)
+$(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/tfa98xx/Module.symvers)
 $(shell rm -rf $(PRODUCT_OUT)/obj/vendor/qcom/opensource/audio-kernel/asoc/codecs/tas256x/Module.symvers)
 
 include $(MY_LOCAL_PATH)/include/uapi/Android.mk
@@ -23,6 +24,13 @@ include $(MY_LOCAL_PATH)/soc/Android.mk
 include $(MY_LOCAL_PATH)/asoc/Android.mk
 include $(MY_LOCAL_PATH)/asoc/codecs/Android.mk
 include $(MY_LOCAL_PATH)/asoc/codecs/wcd934x/Android.mk
+ifeq ($(TARGET_PRODUCT), $(filter $(TARGET_PRODUCT), nabu))
+include $(MY_LOCAL_PATH)/asoc/codecs/cs35l41_v2/Android.mk
+else
+include $(MY_LOCAL_PATH)/asoc/codecs/cs35l41/Android.mk
+endif
+include $(MY_LOCAL_PATH)/asoc/codecs/tas2557/Android.mk
+include $(MY_LOCAL_PATH)/asoc/codecs/tfa98xx/Android.mk
 include $(MY_LOCAL_PATH)/asoc/codecs/tas256x/Android.mk
 endif
 

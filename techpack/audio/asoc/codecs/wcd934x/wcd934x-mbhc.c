@@ -10,6 +10,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#define DEBUG
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
@@ -863,12 +864,10 @@ static bool tavil_is_anc_on(struct wcd_mbhc *mbhc)
 	return anc_on;
 }
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 static void tavil_mute_hs_tx(struct snd_soc_codec *codec)
 {
 	snd_soc_update_bits(codec, WCD934X_CDC_TX0_TX_PATH_CTL, 0x10, 0x10);
 }
-#endif
 
 static const struct wcd_mbhc_cb mbhc_cb = {
 	.request_irq = tavil_mbhc_request_irq,
@@ -895,9 +894,7 @@ static const struct wcd_mbhc_cb mbhc_cb = {
 	.hph_register_recovery = tavil_hph_register_recovery,
 	.update_anc_state = tavil_update_anc_state,
 	.is_anc_on = tavil_is_anc_on,
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	.mbhc_mute_hs_tx = tavil_mute_hs_tx,
-#endif
 };
 
 static struct regulator *tavil_codec_find_ondemand_regulator(
@@ -997,7 +994,7 @@ int tavil_mbhc_get_impedance(struct wcd934x_mbhc *wcd934x_mbhc,
 }
 EXPORT_SYMBOL(tavil_mbhc_get_impedance);
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
+
 int tavil_mb_pull_down(struct snd_soc_codec *codec, bool active,
 		int value)
 {
@@ -1017,7 +1014,7 @@ int tavil_mb_pull_down(struct snd_soc_codec *codec, bool active,
 	return oldv;
 }
 EXPORT_SYMBOL(tavil_mb_pull_down);
-#endif
+
 
 /*
  * tavil_mbhc_hs_detect: starts mbhc insertion/removal functionality

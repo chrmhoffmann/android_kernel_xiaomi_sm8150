@@ -9,6 +9,7 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  */
+#define DEBUG
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/firmware.h>
@@ -644,9 +645,7 @@ struct tavil_priv {
 	struct platform_device *pdev_child_devices
 		[WCD934X_CHILD_DEVICES_MAX];
 	int child_count;
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	int micbias_num;
-#endif
 	struct regulator *micb_load;
 	int micb_load_low;
 	int micb_load_high;
@@ -5677,7 +5676,6 @@ static int tavil_compander_put(struct snd_kcontrol *kcontrol,
 		/* Set Gain Source Select based on compander enable/disable */
 		snd_soc_update_bits(codec, WCD934X_HPH_L_EN, 0x20,
 				(value ? 0x00:0x20));
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		/* Disable Compander Clock */
 		snd_soc_update_bits(codec, WCD934X_CDC_RX1_RX_PATH_CFG0, 0x02, 0x00);
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER1_CTL0, 0x04, 0x04);
@@ -5685,12 +5683,10 @@ static int tavil_compander_put(struct snd_kcontrol *kcontrol,
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER1_CTL0, 0x02, 0x00);
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER1_CTL0, 0x01, 0x00);
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER1_CTL0, 0x04, 0x00);
-#endif
 		break;
 	case COMPANDER_2:
 		snd_soc_update_bits(codec, WCD934X_HPH_R_EN, 0x20,
 				(value ? 0x00:0x20));
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 		/* Disable Compander Clock */
 		snd_soc_update_bits(codec, WCD934X_CDC_RX2_RX_PATH_CFG0, 0x02, 0x00);
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER2_CTL0, 0x04, 0x04);
@@ -5698,7 +5694,7 @@ static int tavil_compander_put(struct snd_kcontrol *kcontrol,
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER2_CTL0, 0x02, 0x00);
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER2_CTL0, 0x01, 0x00);
 		snd_soc_update_bits(codec, WCD934X_CDC_COMPANDER2_CTL0, 0x04, 0x00);
-#endif
+
 		break;
 	case COMPANDER_3:
 	case COMPANDER_4:
@@ -6046,7 +6042,6 @@ static int tavil_mad_input_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 static const char *const tavil_micbias_text[] = {
 	"OFF", "MICBIAS1", "MICBIAS2", "MICBIAS3", "MICBIAS4"
 };
@@ -6101,7 +6096,7 @@ static int tavil_micb_status_put(struct snd_kcontrol *kcontrol,
 
 	return 0;
 }
-#endif
+
 
 static int tavil_ear_pa_gain_get(struct snd_kcontrol *kcontrol,
 				 struct snd_ctl_elem_value *ucontrol)
@@ -6406,13 +6401,8 @@ static const struct snd_kcontrol_new tavil_snd_controls[] = {
 	SOC_ENUM_EXT("SPKR Right Boost Max State", tavil_spkr_boost_stage_enum,
 		     tavil_spkr_right_boost_stage_get,
 		     tavil_spkr_right_boost_stage_put),
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	SOC_SINGLE_TLV("HPHL Volume", WCD934X_HPH_L_EN, 0, 24, 1, line_gain),
 	SOC_SINGLE_TLV("HPHR Volume", WCD934X_HPH_R_EN, 0, 24, 1, line_gain),
-#else
-	SOC_SINGLE_TLV("HPHL Volume", WCD934X_HPH_L_EN, 0, 20, 1, line_gain),
-	SOC_SINGLE_TLV("HPHR Volume", WCD934X_HPH_R_EN, 0, 20, 1, line_gain),
-#endif
 	SOC_SINGLE_TLV("LINEOUT1 Volume", WCD934X_DIFF_LO_LO1_COMPANDER,
 		3, 16, 1, line_gain),
 	SOC_SINGLE_TLV("LINEOUT2 Volume", WCD934X_DIFF_LO_LO2_COMPANDER,
@@ -6607,10 +6597,9 @@ static const struct snd_kcontrol_new tavil_snd_controls[] = {
 	SOC_ENUM_EXT("MAD Input", tavil_conn_mad_enum,
 		     tavil_mad_input_get, tavil_mad_input_put),
 
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	SOC_ENUM_EXT("Mic Bias", tavil_micbias_enum,
 		     tavil_micb_status_get, tavil_micb_status_put),
-#endif
+
 
 	SOC_SINGLE_EXT("DMIC1_CLK_PIN_MODE", SND_SOC_NOPM, 17, 1, 0,
 		tavil_dmic_pin_mode_get, tavil_dmic_pin_mode_put),
@@ -11159,7 +11148,9 @@ static int tavil_probe(struct platform_device *pdev)
 	struct wcd9xxx_resmgr_v2 *resmgr;
 	struct wcd9xxx_power_region *cdc_pwr;
 	const __be32 *micb_prop;
-
+    dev_err(&pdev->dev, "%s: liming-test7 enter\n",
+		 __func__);
+   
 	tavil = devm_kzalloc(&pdev->dev, sizeof(struct tavil_priv),
 			    GFP_KERNEL);
 	if (!tavil)
@@ -11233,9 +11224,7 @@ static int tavil_probe(struct platform_device *pdev)
 	tavil->swr.plat_data.clk = tavil_swrm_clock;
 	tavil->swr.plat_data.handle_irq = tavil_swrm_handle_irq;
 	tavil->swr.spkr_gain_offset = WCD934X_RX_GAIN_OFFSET_0_DB;
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	tavil->micbias_num = 0;
-#endif
 
 	/* Register for Clock */
 	wcd_ext_clk = clk_get(tavil->wcd9xxx->dev, "wcd_clk");

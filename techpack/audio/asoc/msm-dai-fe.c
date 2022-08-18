@@ -575,7 +575,6 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.name = "CDC_DMA_HOSTLESS",
 		.probe = fe_dai_probe,
 	},
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 	{
 		.playback = {
 			.stream_name = "ULTRAOUND_HOSTLESS Playback",
@@ -622,7 +621,6 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 		.name = "CDC_DMA_HOSTLESS_USTX",
 		.probe = fe_dai_probe,
 	},
-#endif
 	{
 		.capture = {
 			.stream_name = "TX3_CDC_DMA_HOSTLESS Capture",
@@ -911,10 +909,8 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.aif_name = "PRI_MI2S_UL_HL",
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-				    SNDRV_PCM_FMTBIT_S24_3LE |
-#endif
-				    SNDRV_PCM_FMTBIT_S24_LE),
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE),
 			.channels_min = 1,
 			.channels_max = 2,
 			.rate_min = 8000,
@@ -930,9 +926,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.aif_name = "PRI_MI2S_DL_HL",
 			.rates = SNDRV_PCM_RATE_8000_384000,
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 				    SNDRV_PCM_FMTBIT_S24_3LE |
-#endif
 				    SNDRV_PCM_FMTBIT_S24_LE),
 			.channels_min = 1,
 			.channels_max = 2,
@@ -981,10 +975,8 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.aif_name = "TERT_MI2S_UL_HL",
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-			        SNDRV_PCM_FMTBIT_S24_3LE |
-#endif
-				    SNDRV_PCM_FMTBIT_S24_LE),
+			            SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE),
 			.channels_min = 1,
 			.channels_max = 2,
 			.rate_min = 8000,
@@ -1000,10 +992,8 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.aif_name = "TERT_MI2S_DL_HL",
 			.rates = SNDRV_PCM_RATE_8000_384000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE |
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-				    SNDRV_PCM_FMTBIT_S24_3LE |
-#endif
-				    SNDRV_PCM_FMTBIT_S24_LE,
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE,
 			.channels_min = 1,
 			.channels_max = 2,
 			.rate_min =	8000,
@@ -1019,10 +1009,8 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.aif_name = "QUAT_MI2S_UL_HL",
 			.rates = SNDRV_PCM_RATE_8000_48000,
 			.formats = (SNDRV_PCM_FMTBIT_S16_LE |
-#ifdef CONFIG_MACH_XIAOMI_VAYU
-				    SNDRV_PCM_FMTBIT_S24_3LE |
-#endif
-				    SNDRV_PCM_FMTBIT_S24_LE),
+				    SNDRV_PCM_FMTBIT_S24_LE |
+				    SNDRV_PCM_FMTBIT_S24_3LE),
 			.channels_min = 1,
 			.channels_max = 2,
 			.rate_min = 8000,
@@ -1038,9 +1026,7 @@ static struct snd_soc_dai_driver msm_fe_dais[] = {
 			.aif_name = "QUAT_MI2S_DL_HL",
 			.rates = SNDRV_PCM_RATE_8000_384000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE |
-#ifdef CONFIG_MACH_XIAOMI_VAYU
 				    SNDRV_PCM_FMTBIT_S24_3LE |
-#endif
 				    SNDRV_PCM_FMTBIT_S24_LE,
 			.channels_min = 1,
 			.channels_max = 8,
